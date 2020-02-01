@@ -7,19 +7,8 @@ import sys
 import matplotlib.pyplot as plt
 sys.path.append(os.getcwd())
 from utils.data import time, series, plot_series
-
-def window_dataset(series, window_size, batch_size=32,
-                   shuffle_buffer=1000):
-    dataset = tf.data.Dataset.from_tensor_slices(series)
-    dataset = dataset.window(window_size + 1, shift=1, drop_remainder=True)
-    dataset = dataset.flat_map(lambda window: window.batch(window_size + 1))
-    # "This dataset fills a buffer with buffer_size elements, then randomly samples elements from this buffer"
-    dataset = dataset.shuffle(shuffle_buffer)
-    dataset = dataset.map(lambda window: (window[:-1], window[-1]))
-    # Prepare later batch while training current batch. This helps to improve performance at the cost
-    # of using more memory
-    dataset = dataset.batch(batch_size).prefetch(1)
-    return dataset
+from utils.prepDataset import create_window_dataset
+from utils.modelForecast import model_forecast
 
 split_time = 1000
 time_train = time[:split_time]
@@ -32,8 +21,8 @@ tf.random.set_seed(42)
 np.random.seed(42)
 
 window_size = 30
-train_set = window_dataset(x_train, window_size)
-valid_set = window_dataset(x_valid, window_size)
+train_set = create_window_dataset(x_train, window_size)
+valid_set = create_window_dataset(x_valid, window_size)
 
 def getPlotToFindTheBestLearningRate(model):
     lr_schedule = keras.callbacks.LearningRateScheduler(
@@ -78,14 +67,6 @@ def train_dense_model():
     early_stopping = keras.callbacks.EarlyStopping(patience=10)
     model.fit(train_set, epochs=500, validation_data=valid_set, callbacks=[early_stopping])
     model.save(os.getcwd() + "/Machine learning forecast/dense_model.h5")
-    
-def model_forecast(model, series, window_size):
-    ds = tf.data.Dataset.from_tensor_slices(series) # Create a Dataset from series
-    ds = ds.window(window_size, shift=1, drop_remainder=True)
-    ds = ds.flat_map(lambda w: w.batch(window_size))
-    ds = ds.batch(32).prefetch(1)
-    forecast = model.predict(ds)
-    return forecast
 
 train_dense_model()
 # array[:, 0] takes only the [...][0] elements. in this case, because the forecast has shape (461,1),
@@ -94,5 +75,4 @@ train_dense_model()
 # plt.figure(figsize=(10, 6))
 # plot_series(time_valid, x_valid)
 # plot_series(time_valid, linear_forecast)
-# plt.show()
 # print(keras.metrics.mean_absolute_error(x_valid, linear_forecast).numpy())
