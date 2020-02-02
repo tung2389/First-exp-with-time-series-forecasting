@@ -89,7 +89,9 @@ def trainSimpleModel():
             callbacks=[early_stopping, model_checkpoint])
   rnn_forecast = model_forecast(
       model,
-      series[split_time - window_size:-1],
+      # Must be split_time- window_size because we want to forecast from the element [1000] and
+      # the model_forecast function split the series into many batches to fit with the model
+      series[split_time - window_size:-1], 
       window_size)[:, 0]
   plt.figure(figsize=(10, 6))
   plot_series(time_valid, value_valid)
@@ -98,7 +100,7 @@ def trainSimpleModel():
   print(keras.metrics.mean_absolute_error(value_valid, rnn_forecast).numpy())
 
   
-# for X_batch, Y_batch in seq2seq_window_dataset(tf.range(10), 3,
+# for X_batch, Y_batch in create_seq2seq_window_dataset(tf.range(10), 3,
 #                                                batch_size=1):
 #     print("X:", X_batch.numpy())
 #     print("Y:", Y_batch.numpy())
@@ -117,8 +119,19 @@ def trainSeqToSeqModel():
             callbacks=[early_stopping, model_checkpoint])
   # Series[..., np.newaxis] add one more dimension to series. For example: [1,2,3,4] -> [[1],[2],[3],[4]]
   # Series[..., np.newaxis] is equivalent to tf.expand_dims(series, axis=-1)
-  rnn_forecast = model_forecast(model, series[..., np.newaxis], window_size) 
-  rnn_forecast = rnn_forecast[split_time - window_size:-1, -1, 0]
+  # We must preprocess series by using series[..., np.newaxis] because seqToSeqModel use preprocessed data with one more dimension
+  rnn_forecast = model_forecast(model, series[..., np.newaxis], window_size)
+  print(series[..., np.newaxis]) 
+  # Arr[1,2,3] is equivalent to arr[1][2][3]
+  # (split_time - window_size : -1): Get the value in range (the array holding predicted values from the element [1000])
+  # Because the window element [split_time - window_size = 970] holding values from [970 - 999]
+  # the rnn_forecast[split_time - window_size] holding predicted value of days [971 -> 1000]. In the same
+  # way, the last elements in rnn_forecast holding predicted value of days [1432 - 1461], but we don't
+  # need the predicted value of day 1461, then we use [split_time - window_size:-1], not [split_time - window_size].
+  # -1: Our model return a sequences of predicted values, but we only takes the last value [-1], 
+  # because that is the predicted value for 30-days interval. For ex: []
+  # 0: Because each value has shape (1,)
+  rnn_forecast = rnn_forecast[split_time - window_size:-1, -1, 0] 
   plt.figure(figsize=(10, 6))
   plot_series(time_valid, value_valid)
   plot_series(time_valid, rnn_forecast)
